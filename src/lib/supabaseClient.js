@@ -4,6 +4,8 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export const isLocalFallbackEnabled = import.meta.env.DEV && !isSupabaseConfigured;
+export const supabaseConfigError = 'Supabase no esta configurado. En Vercel agrega VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.';
 
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
@@ -17,7 +19,7 @@ export const supabase = isSupabaseConfigured
 
 export function ensureSupabase() {
   if (!supabase) {
-    throw new Error('Supabase no esta configurado. Agrega VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.');
+    throw new Error(supabaseConfigError);
   }
   return supabase;
 }

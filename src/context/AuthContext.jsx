@@ -1,5 +1,10 @@
 import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
+import {
+  isLocalFallbackEnabled,
+  isSupabaseConfigured,
+  supabase,
+  supabaseConfigError,
+} from '../lib/supabaseClient';
 
 const MOCK_USERS = [
   {
@@ -105,7 +110,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (usernameOrEmail, password) => {
     setLoginError('');
 
-    if (!isSupabaseConfigured) {
+    if (isLocalFallbackEnabled) {
       const found = MOCK_USERS.find(
         (u) => u.username === usernameOrEmail && u.password === password
       );
@@ -115,6 +120,11 @@ export function AuthProvider({ children }) {
         return true;
       }
       setLoginError('Usuario o contrasena incorrectos');
+      return false;
+    }
+
+    if (!isSupabaseConfigured) {
+      setLoginError(supabaseConfigError);
       return false;
     }
 

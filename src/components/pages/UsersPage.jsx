@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTenant } from '../../context/TenantContext';
 import { generatePdf } from '../../services/pdfService';
-import { isSupabaseConfigured } from '../../lib/supabaseClient';
+import { isLocalFallbackEnabled, isSupabaseConfigured } from '../../lib/supabaseClient';
 import {
   fetchUsers,
   createUserProfile,
@@ -327,7 +327,7 @@ function UserModal({ item, onSave, onClose }) {
               </select>
             </div>
           </div>
-          {!item && !isSupabaseConfigured && (
+          {!item && isLocalFallbackEnabled && (
             <div className="crud-modal__field">
               <label>Contrasena</label>
               <input name="password" type="password" value={form.password} onChange={handleChange} required />
