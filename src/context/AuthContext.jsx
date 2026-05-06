@@ -60,20 +60,24 @@ export function AuthProvider({ children }) {
     let isMounted = true;
 
     async function loadSession() {
-      const { data } = await supabase.auth.getSession();
-      if (!isMounted) return;
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!isMounted) return;
 
-      if (data.session?.user) {
-        try {
-          const profile = await fetchProfile(data.session.user);
-          if (isMounted) setUser(profile);
-        } catch (err) {
-          console.error(err);
-          if (isMounted) setLoginError('No se encontro el perfil del usuario.');
+        if (data.session?.user) {
+          try {
+            const profile = await fetchProfile(data.session.user);
+            if (isMounted) setUser(profile);
+          } catch (err) {
+            console.error(err);
+            if (isMounted) setLoginError('No se encontro el perfil del usuario.');
+          }
         }
+      } catch (err) {
+        console.error('Error al obtener sesion:', err);
+      } finally {
+        if (isMounted) setAuthLoading(false);
       }
-
-      if (isMounted) setAuthLoading(false);
     }
 
     loadSession();
