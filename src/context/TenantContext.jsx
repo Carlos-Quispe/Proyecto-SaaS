@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import { useAuth } from './AuthContext';
 
 // ─── Tenant Definitions ───
 export const TENANTS = {
@@ -23,6 +24,7 @@ export const TENANTS = {
 const TenantContext = createContext(null);
 
 export function TenantProvider({ children }) {
+  const { user } = useAuth();
   const [currentTenant, setCurrentTenant] = useState(TENANTS.alpha);
 
   const switchTenant = useCallback((tenantKey) => {
@@ -31,6 +33,12 @@ export function TenantProvider({ children }) {
       setCurrentTenant(tenant);
     }
   }, []);
+
+  useEffect(() => {
+    if (!user?.clientId) return;
+    const tenant = Object.values(TENANTS).find((item) => item.id === user.clientId);
+    if (tenant) setCurrentTenant(tenant);
+  }, [user?.clientId]);
 
   const contextValue = useMemo(
     () => ({ currentTenant, switchTenant, TENANTS }),

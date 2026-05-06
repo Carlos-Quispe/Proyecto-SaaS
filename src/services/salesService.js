@@ -1,3 +1,5 @@
+import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
+
 /**
  * Mock Sales Data Service
  */
@@ -52,14 +54,46 @@ const mockSales = [
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function mapSale(row) {
+  return {
+    id: row.id,
+    clientId: row.tenant_id,
+    sellerId: row.seller_id,
+    sellerName: row.seller_name,
+    items: (row.sale_items || []).map((item) => ({
+      productId: item.product_id,
+      productName: item.product_name,
+      quantity: Number(item.quantity || 0),
+      unitPrice: Number(item.unit_price || 0),
+      subtotal: Number(item.subtotal || 0),
+    })),
+    totalAmount: Number(row.total_amount || 0),
+    paymentMethod: row.payment_method,
+    status: row.status,
+    notes: row.notes || '',
+    saleDate: new Date(row.sale_date),
+  };
+}
+
 export async function fetchSales(clientId) {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase
+      .from('sales')
+      .select('*, sale_items(*)')
+      .eq('tenant_id', clientId)
+      .order('sale_date', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map(mapSale);
+  }
+
   await delay(350);
   return mockSales.filter((s) => s.clientId === clientId).sort((a, b) => b.saleDate - a.saleDate);
 }
 
 export async function fetchSaleStats(clientId) {
-  await delay(250);
-  const sales = mockSales.filter((s) => s.clientId === clientId);
+  if (!isSupabaseConfigured) await delay(250);
+  const sales = await fetchSales(clientId);
   const completed = sales.filter((s) => s.status === 'completed');
   const totalRevenue = completed.reduce((s, v) => s + v.totalAmount, 0);
   const totalSales = completed.length;
@@ -72,6 +106,77 @@ export async function fetchSaleStats(clientId) {
     totalRevenue: Math.round(totalRevenue * 100) / 100,
     avgTicket: Math.round(avgTicket * 100) / 100,
   };
+}
+
+export async function createSale(clientId, user, formData, selectedProduct) {
+  const quantity = parseInt(formData.quantity, 10) || 1;
+  const unitPrice = selectedProduct?.price || 0;
+  const item = {
+    productId: formData.productId,
+    productName: selectedProduct?.name || 'Producto',
+    quantity,
+    unitPrice,
+    subtotal: unitPrice * quantity,
+  };
+
+  if (isSupabaseConfigured) {
+    const { data: sale, error: saleError } = await supabase
+      .from('sales')
+      .insert({
+        tenant_id: clientId,
+        seller_id: user.id,
+        seller_name: user.name,
+        total_amount: item.subtotal,
+        payment_method: formData.paymentMethod,
+        status: 'pending',
+        notes: formData.notes || '',
+        sale_date: new Date().toISOString(),
+      })
+      .select('*')
+      .single();
+
+    if (saleError) throw saleError;
+
+    const { data: saleItems, error: itemError } = await supabase
+      .from('sale_items')
+      .insert({
+        sale_id: sale.id,
+        product_id: item.productId,
+        product_name: item.productName,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        subtotal: item.subtotal,
+      })
+      .select('*');
+
+    if (itemError) throw itemError;
+    return mapSale({ ...sale, sale_items: saleItems || [] });
+  }
+
+  await delay(250);
+  return {
+    id: `sale_${Date.now()}`,
+    clientId,
+    sellerId: user.id,
+    sellerName: user.name,
+    items: [item],
+    totalAmount: item.subtotal,
+    paymentMethod: formData.paymentMethod,
+    status: 'pending',
+    notes: formData.notes || '',
+    saleDate: new Date(),
+  };
+}
+
+export async function deleteSale(saleId) {
+  if (isSupabaseConfigured) {
+    const { error } = await supabase.from('sales').delete().eq('id', saleId);
+    if (error) throw error;
+    return true;
+  }
+
+  await delay(200);
+  return true;
 }
 
 export const PAYMENT_METHODS = {

@@ -4,7 +4,8 @@ import Login from './components/Login/Login';
 import AppShell from './components/AppShell';
 
 function AuthGate() {
-  const { user } = useAuth();
+  const { user, authLoading } = useAuth();
+  if (authLoading) return <div className="dash-loading"><span className="dash-loading__spinner" /><span>Cargando sesion...</span></div>;
   if (!user) return <Login />;
   return <AppShell />;
 }

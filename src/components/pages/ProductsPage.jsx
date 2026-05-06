@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTenant } from '../../context/TenantContext';
 import { useAuth } from '../../context/AuthContext';
-import { fetchProducts, CATEGORIES } from '../../services/productService';
+import { fetchProducts, createProduct, updateProduct, deleteProduct, CATEGORIES } from '../../services/productService';
 import { generatePdf } from '../../services/pdfService';
 import FeedbackToast from '../FeedbackToast';
 import './CrudPage.css';
@@ -66,44 +66,58 @@ export default function ProductsPage() {
     setShowReportModal(false);
   };
 
-  const handleSave = (formData) => {
-    if (editItem) {
-      setProducts((prev) =>
-        prev.map((p) => (p.id === editItem.id ? { ...p, ...formData } : p))
-      );
+  const handleSave = async (formData) => {
+    try {
+      if (editItem) {
+        const savedProduct = await updateProduct(editItem.id, { ...editItem, ...formData });
+        setProducts((prev) =>
+          prev.map((p) => (p.id === editItem.id ? savedProduct : p))
+        );
+        setToast({
+          title: 'Producto actualizado',
+          message: `${formData.name} se guardo correctamente.`,
+          type: 'success',
+        });
+      } else {
+        const newProduct = await createProduct(currentTenant.id, formData);
+        setProducts((prev) => [newProduct, ...prev]);
+        setToast({
+          title: 'Producto agregado',
+          message: `${formData.name} ya esta disponible en el catalogo.`,
+          type: 'success',
+        });
+      }
+      setShowModal(false);
+      setEditItem(null);
+    } catch (err) {
+      console.error(err);
       setToast({
-        title: 'Producto actualizado',
-        message: `${formData.name} se guardo correctamente.`,
-        type: 'success',
-      });
-    } else {
-      const newProduct = {
-        ...formData,
-        id: `prod_new_${Date.now()}`,
-        clientId: currentTenant.id,
-        isActive: true,
-        imageUrl: `https://picsum.photos/seed/${Date.now()}/400/300`,
-      };
-      setProducts((prev) => [newProduct, ...prev]);
-      setToast({
-        title: 'Producto agregado',
-        message: `${formData.name} ya esta disponible en el catalogo.`,
-        type: 'success',
+        title: 'No se pudo guardar',
+        message: err.message || 'Intentalo nuevamente.',
+        type: 'danger',
       });
     }
-    setShowModal(false);
-    setEditItem(null);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     const product = products.find((p) => p.id === id);
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-    setDeleteConfirm(null);
-    setToast({
-      title: 'Producto eliminado',
-      message: `${product?.name || 'El producto'} fue retirado del catalogo.`,
-      type: 'danger',
-    });
+    try {
+      await deleteProduct(id);
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+      setDeleteConfirm(null);
+      setToast({
+        title: 'Producto eliminado',
+        message: `${product?.name || 'El producto'} fue retirado del catalogo.`,
+        type: 'danger',
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        title: 'No se pudo eliminar',
+        message: err.message || 'Intentalo nuevamente.',
+        type: 'danger',
+      });
+    }
   };
 
   return (

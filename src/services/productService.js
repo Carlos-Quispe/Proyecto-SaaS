@@ -1,3 +1,5 @@
+import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
+
 /**
  * Mock Product Data Service
  * Simula las llamadas al backend — replica los datos del ProductRepository del server
@@ -386,17 +388,68 @@ const mockProducts = [
   },
 ];
 
-// Simular latencia de red
+// Simular latencia de red en modo mock
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function mapProduct(row) {
+  return {
+    id: row.id,
+    clientId: row.tenant_id,
+    name: row.name,
+    sku: row.sku,
+    description: row.description || '',
+    category: row.category,
+    price: Number(row.price || 0),
+    cost: Number(row.cost || 0),
+    stock: Number(row.stock || 0),
+    minStock: Number(row.min_stock || 0),
+    imageUrl: row.image_url || `https://picsum.photos/seed/${row.id}/400/300`,
+    brand: row.brand || '',
+    isActive: row.is_active,
+    tags: row.tags || [],
+  };
+}
+
+function toProductRow(product, tenantId) {
+  const row = {
+    tenant_id: tenantId,
+    name: product.name,
+    sku: product.sku,
+    description: product.description || '',
+    category: product.category,
+    price: product.price || 0,
+    cost: product.cost || 0,
+    stock: product.stock || 0,
+    min_stock: product.minStock || 0,
+    image_url: product.imageUrl || `https://picsum.photos/seed/${product.sku || Date.now()}/400/300`,
+    brand: product.brand || '',
+    is_active: product.isActive ?? true,
+    tags: Array.isArray(product.tags) ? product.tags : [],
+  };
+  if (!tenantId) delete row.tenant_id;
+  return row;
+}
+
 export async function fetchProducts(clientId) {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('tenant_id', clientId)
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map(mapProduct);
+  }
+
   await delay(400);
   return mockProducts.filter((p) => p.clientId === clientId && p.isActive);
 }
 
 export async function fetchProductStats(clientId) {
-  await delay(300);
-  const products = mockProducts.filter((p) => p.clientId === clientId && p.isActive);
+  if (!isSupabaseConfigured) await delay(300);
+  const products = await fetchProducts(clientId);
   const lowStock = products.filter((p) => p.stock <= p.minStock);
   const totalValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
   const totalItems = products.reduce((sum, p) => sum + p.stock, 0);
@@ -414,14 +467,69 @@ export async function fetchProductStats(clientId) {
 }
 
 export async function searchProducts(clientId, term) {
-  await delay(250);
+  if (!isSupabaseConfigured) await delay(250);
   const lower = term.toLowerCase();
-  return mockProducts.filter(
+  const products = await fetchProducts(clientId);
+  return products.filter(
     (p) =>
-      p.clientId === clientId &&
-      p.isActive &&
-      (p.name.toLowerCase().includes(lower) || p.description.toLowerCase().includes(lower))
+      p.name.toLowerCase().includes(lower) ||
+      p.description.toLowerCase().includes(lower) ||
+      p.sku.toLowerCase().includes(lower)
   );
+}
+
+export async function createProduct(clientId, product) {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase
+      .from('products')
+      .insert(toProductRow(product, clientId))
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return mapProduct(data);
+  }
+
+  await delay(250);
+  return {
+    ...product,
+    id: `prod_new_${Date.now()}`,
+    clientId,
+    isActive: true,
+    imageUrl: product.imageUrl || `https://picsum.photos/seed/${Date.now()}/400/300`,
+  };
+}
+
+export async function updateProduct(productId, product) {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase
+      .from('products')
+      .update(toProductRow(product, product.clientId))
+      .eq('id', productId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return mapProduct(data);
+  }
+
+  await delay(250);
+  return { ...product, id: productId };
+}
+
+export async function deleteProduct(productId) {
+  if (isSupabaseConfigured) {
+    const { error } = await supabase
+      .from('products')
+      .update({ is_active: false })
+      .eq('id', productId);
+
+    if (error) throw error;
+    return true;
+  }
+
+  await delay(200);
+  return true;
 }
 
 export const CATEGORIES = [

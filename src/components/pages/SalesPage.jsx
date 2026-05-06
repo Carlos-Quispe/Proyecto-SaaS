@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTenant } from '../../context/TenantContext';
 import { useAuth } from '../../context/AuthContext';
-import { fetchSales, PAYMENT_METHODS, SALE_STATUS } from '../../services/salesService';
+import { fetchSales, createSale, deleteSale, PAYMENT_METHODS, SALE_STATUS } from '../../services/salesService';
 import { fetchProducts } from '../../services/productService';
 import { generatePdf } from '../../services/pdfService';
 import FeedbackToast from '../FeedbackToast';
@@ -105,46 +105,46 @@ export default function SalesPage() {
     setSortOrder('date_desc');
   };
 
-  const handleSave = (formData) => {
+  const handleSave = async (formData) => {
     const selectedProduct = products.find((product) => product.id === formData.productId);
-    const quantity = parseInt(formData.quantity) || 1;
-    const unitPrice = selectedProduct?.price || 0;
-    const newSale = {
-      id: `sale_${Date.now()}`,
-      clientId: currentTenant.id,
-      sellerId: user.id,
-      sellerName: user.name,
-      items: [{
-        productId: formData.productId,
-        productName: selectedProduct?.name || 'Producto',
-        quantity,
-        unitPrice,
-        subtotal: unitPrice * quantity,
-      }],
-      totalAmount: unitPrice * quantity,
-      paymentMethod: formData.paymentMethod,
-      status: 'pending',
-      notes: formData.notes,
-      saleDate: new Date(),
-    };
-    setSales((prev) => [newSale, ...prev]);
-    setShowModal(false);
-    setToast({
-      title: 'Venta registrada',
-      message: `Venta ${newSale.id} agregada por ${newSale.sellerName}.`,
-      type: 'success',
-    });
+    try {
+      const newSale = await createSale(currentTenant.id, user, formData, selectedProduct);
+      setSales((prev) => [newSale, ...prev]);
+      setShowModal(false);
+      setToast({
+        title: 'Venta registrada',
+        message: `Venta ${newSale.id} agregada por ${newSale.sellerName}.`,
+        type: 'success',
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        title: 'No se pudo registrar',
+        message: err.message || 'Intentalo nuevamente.',
+        type: 'danger',
+      });
+    }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     const sale = sales.find((item) => item.id === id);
-    setSales((prev) => prev.filter((sale) => sale.id !== id));
-    setDeleteConfirm(null);
-    setToast({
-      title: 'Venta eliminada',
-      message: `${sale?.id || 'La venta'} fue eliminada del registro.`,
-      type: 'danger',
-    });
+    try {
+      await deleteSale(id);
+      setSales((prev) => prev.filter((sale) => sale.id !== id));
+      setDeleteConfirm(null);
+      setToast({
+        title: 'Venta eliminada',
+        message: `${sale?.id || 'La venta'} fue eliminada del registro.`,
+        type: 'danger',
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        title: 'No se pudo eliminar',
+        message: err.message || 'Intentalo nuevamente.',
+        type: 'danger',
+      });
+    }
   };
 
   return (

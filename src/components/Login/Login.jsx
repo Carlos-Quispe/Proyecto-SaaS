@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { isSupabaseConfigured } from '../../lib/supabaseClient';
 import './Login.css';
 
 export default function Login() {
@@ -16,9 +17,7 @@ export default function Login() {
       return;
     }
     setIsLoading(true);
-    // Simular latencia de red
-    await new Promise((r) => setTimeout(r, 600));
-    login(username.trim(), password);
+    await login(username.trim(), password);
     setIsLoading(false);
   };
 
@@ -114,7 +113,7 @@ export default function Login() {
           </button>
         </form>
 
-        {/* Demo credentials */}
+        {!isSupabaseConfigured && (
         <div className="login-demo">
           <p className="login-demo__title">Cuentas de prueba:</p>
           <div className="login-demo__cards">
@@ -142,6 +141,7 @@ export default function Login() {
             </button>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

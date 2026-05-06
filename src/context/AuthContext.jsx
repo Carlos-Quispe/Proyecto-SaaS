@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
-// ─── Usuarios predefinidos ───
 const MOCK_USERS = [
   {
     id: 'user_001',
@@ -9,52 +9,144 @@ const MOCK_USERS = [
     name: 'Carlos Administrador',
     email: 'admin@techstore.com',
     role: 'admin',
-    avatar: '👨‍💼',
+    avatar: 'CA',
     clientId: 'tenant_techstore_alpha',
   },
   {
     id: 'user_002',
     username: 'vendedor',
     password: '1234',
-    name: 'María Vendedora',
+    name: 'Maria Vendedora',
     email: 'maria@techstore.com',
     role: 'seller',
-    avatar: '👩‍💻',
+    avatar: 'MV',
     clientId: 'tenant_techstore_alpha',
   },
 ];
 
 const AuthContext = createContext(null);
 
+function toAppUser(profile, authUser) {
+  return {
+    id: authUser?.id || profile.id,
+    username: profile.username || profile.email,
+    name: profile.name || authUser?.email || 'Usuario',
+    email: profile.email || authUser?.email || '',
+    role: profile.role || 'seller',
+    avatar: profile.avatar || (profile.role === 'admin' ? 'AD' : 'VE'),
+    clientId: profile.tenant_id || profile.clientId,
+  };
+}
+
+async function fetchProfile(authUser) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', authUser.id)
+    .single();
+
+  if (error) throw error;
+  return toAppUser(data, authUser);
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const [loginError, setLoginError] = useState('');
 
-  const login = useCallback((username, password) => {
-    setLoginError('');
-    const found = MOCK_USERS.find(
-      (u) => u.username === username && u.password === password
-    );
-    if (found) {
-      const { password: _, ...safeUser } = found;
-      setUser(safeUser);
-      return true;
+  useEffect(() => {
+    if (!isSupabaseConfigured) return undefined;
+
+    let isMounted = true;
+
+    async function loadSession() {
+      const { data } = await supabase.auth.getSession();
+      if (!isMounted) return;
+
+      if (data.session?.user) {
+        try {
+          const profile = await fetchProfile(data.session.user);
+          if (isMounted) setUser(profile);
+        } catch (err) {
+          console.error(err);
+          if (isMounted) setLoginError('No se encontro el perfil del usuario.');
+        }
+      }
+
+      if (isMounted) setAuthLoading(false);
     }
-    setLoginError('Usuario o contraseña incorrectos');
-    return false;
+
+    loadSession();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!session?.user) {
+        setUser(null);
+        return;
+      }
+
+      try {
+        const profile = await fetchProfile(session.user);
+        setUser(profile);
+      } catch (err) {
+        console.error(err);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
-  const logout = useCallback(() => {
-    setUser(null);
+  const login = useCallback(async (usernameOrEmail, password) => {
     setLoginError('');
+
+    if (!isSupabaseConfigured) {
+      const found = MOCK_USERS.find(
+        (u) => u.username === usernameOrEmail && u.password === password
+      );
+      if (found) {
+        const { password: _, ...safeUser } = found;
+        setUser(safeUser);
+        return true;
+      }
+      setLoginError('Usuario o contrasena incorrectos');
+      return false;
+    }
+
+    try {
+      if (!usernameOrEmail.includes('@')) {
+        setLoginError('En Supabase inicia sesion con tu email.');
+        return false;
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email: usernameOrEmail, password });
+      if (error) throw error;
+
+      const profile = await fetchProfile(data.user);
+      setUser(profile);
+      return true;
+    } catch (err) {
+      console.error(err);
+      setLoginError('Usuario o contrasena incorrectos');
+      return false;
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    setLoginError('');
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut();
+    }
+    setUser(null);
   }, []);
 
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
   const isSeller = useMemo(() => user?.role === 'seller', [user]);
 
   const contextValue = useMemo(
-    () => ({ user, login, logout, loginError, isAdmin, isSeller, setLoginError }),
-    [user, login, logout, loginError, isAdmin, isSeller]
+    () => ({ user, login, logout, loginError, isAdmin, isSeller, setLoginError, authLoading }),
+    [user, login, logout, loginError, isAdmin, isSeller, authLoading]
   );
 
   return (
